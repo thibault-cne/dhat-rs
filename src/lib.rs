@@ -441,6 +441,9 @@ struct Globals {
     // Print the JSON to stderr when saving it?
     eprint_json: bool,
 
+    // Print info to stderr when finishing?
+    eprint: bool,
+
     // The backtrace at startup. Used for backtrace trimmming.
     start_bt: Backtrace,
 
@@ -506,6 +509,7 @@ impl Globals {
         file_name: Option<PathBuf>,
         trim_backtraces: Option<usize>,
         eprint_json: bool,
+        eprint: bool,
         heap: Option<HeapGlobals>,
     ) -> Self {
         Self {
@@ -513,6 +517,7 @@ impl Globals {
             file_name,
             trim_backtraces,
             eprint_json,
+            eprint,
             // `None` here because we don't want any frame trimming for this
             // backtrace.
             start_bt: new_backtrace_inner(None, &FxHashMap::default()),
@@ -545,7 +550,7 @@ impl Globals {
                 allocation_instant: now,
             },
         );
-        std::assert!(matches!(old, None));
+        std::assert!(old.is_none());
     }
 
     fn update_counts_for_alloc(
@@ -753,24 +758,8 @@ impl Globals {
             ftbl,
         };
 
-        eprintln!(
-            "dhat: Total:     {} {} in {} {}",
-            self.total_bytes.separate_with_commas(),
-            json.bsu.unwrap_or("bytes"),
-            self.total_blocks.separate_with_commas(),
-            json.bksu.unwrap_or("blocks"),
-        );
-        if let Some(h) = &self.heap {
-            eprintln!(
-                "dhat: At t-gmax: {} bytes in {} blocks",
-                h.max_bytes.separate_with_commas(),
-                h.max_blocks.separate_with_commas(),
-            );
-            eprintln!(
-                "dhat: At t-end:  {} bytes in {} blocks",
-                h.curr_bytes.separate_with_commas(),
-                h.curr_blocks.separate_with_commas(),
-            );
+        if self.eprint {
+            self.eprint_summary(&json);
         }
 
         if let Some(memory_output) = memory_output {
@@ -778,33 +767,31 @@ impl Globals {
             // tests.
             *memory_output = serde_json::to_string_pretty(&json).unwrap();
             eprintln!("dhat: The data has been saved to the memory buffer");
-        } else {
-            if let Some(file_name) = self.file_name {
-                let write = || -> std::io::Result<()> {
-                    let buffered_file = BufWriter::new(File::create(&file_name)?);
-                    // `to_writer` produces JSON that is compact.
-                    // `to_writer_pretty` produces JSON that is readable. This code
-                    // gives us JSON that is fairly compact and fairly readable.
-                    // Ideally it would be more like what DHAT produces, e.g. one
-                    // space indents, no spaces after `:` and `,`, and `fs` arrays
-                    // on a single line, but this is as good as we can easily
-                    // achieve.
-                    let formatter = serde_json::ser::PrettyFormatter::with_indent(b"");
-                    let mut ser = serde_json::Serializer::with_formatter(buffered_file, formatter);
-                    json.serialize(&mut ser)?;
-                    Ok(())
-                };
-                match write() {
-                    Ok(()) => eprintln!(
-                        "dhat: The data has been saved to {}, and is viewable with dhat/dh_view.html",
-                        file_name.to_string_lossy()
-                    ),
-                    Err(e) => eprintln!(
-                        "dhat: error: Writing to {} failed: {}",
-                        file_name.to_string_lossy(),
-                        e
-                    ),
-                }
+        } else if let Some(file_name) = self.file_name {
+            let write = || -> std::io::Result<()> {
+                let buffered_file = BufWriter::new(File::create(&file_name)?);
+                // `to_writer` produces JSON that is compact.
+                // `to_writer_pretty` produces JSON that is readable. This code
+                // gives us JSON that is fairly compact and fairly readable.
+                // Ideally it would be more like what DHAT produces, e.g. one
+                // space indents, no spaces after `:` and `,`, and `fs` arrays
+                // on a single line, but this is as good as we can easily
+                // achieve.
+                let formatter = serde_json::ser::PrettyFormatter::with_indent(b"");
+                let mut ser = serde_json::Serializer::with_formatter(buffered_file, formatter);
+                json.serialize(&mut ser)?;
+                Ok(())
+            };
+            match write() {
+                Ok(()) => eprintln!(
+                    "dhat: The data has been saved to {}, and is viewable with dhat/dh_view.html",
+                    file_name.to_string_lossy()
+                ),
+                Err(e) => eprintln!(
+                    "dhat: error: Writing to {} failed: {}",
+                    file_name.to_string_lossy(),
+                    e
+                ),
             }
         }
         if self.eprint_json {
@@ -813,6 +800,30 @@ impl Globals {
                 serde_json::to_string_pretty(&json).unwrap()
             );
         }
+    }
+
+    fn eprint_summary(&self, json: &DhatJson) {
+        let mut s = String::new();
+        s.push_str(&format!(
+            "dhat: Total:     {} {} in {} {}\n",
+            self.total_bytes.separate_with_commas(),
+            json.bsu.unwrap_or("bytes"),
+            self.total_blocks.separate_with_commas(),
+            json.bksu.unwrap_or("blocks"),
+        ));
+        if let Some(h) = &self.heap {
+            s.push_str(&format!(
+                "dhat: At t-gmax: {} bytes in {} blocks\n",
+                h.max_bytes.separate_with_commas(),
+                h.max_blocks.separate_with_commas(),
+            ));
+            s.push_str(&format!(
+                "dhat: At t-end:  {} bytes in {} blocks\n",
+                h.curr_bytes.separate_with_commas(),
+                h.curr_blocks.separate_with_commas(),
+            ));
+        }
+        eprintln!("{}", s);
     }
 }
 
@@ -1015,6 +1026,7 @@ impl Profiler {
             file_name: None,
             trim_backtraces: Some(10),
             eprint_json: false,
+            eprint: false,
         }
     }
 }
@@ -1030,6 +1042,7 @@ pub struct ProfilerBuilder {
     file_name: Option<PathBuf>,
     trim_backtraces: Option<usize>,
     eprint_json: bool,
+    eprint: bool,
 }
 
 impl ProfilerBuilder {
@@ -1138,6 +1151,7 @@ impl ProfilerBuilder {
                     file_name,
                     self.trim_backtraces,
                     self.eprint_json,
+                    self.eprint,
                     h,
                 ));
             }
@@ -1560,7 +1574,7 @@ impl PartialEq for Backtrace {
             if ip1 != ip2 {
                 return false;
             }
-            if ip1 == None {
+            if ip1.is_none() {
                 return true;
             }
             // Otherwise, continue.
