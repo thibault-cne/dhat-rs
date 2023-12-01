@@ -429,7 +429,8 @@ enum TB {
 // by a `Mutex`.
 struct Globals {
     // The file name for the saved data.
-    file_name: PathBuf,
+    // If the file name is `None` then we do not save data.
+    file_name: Option<PathBuf>,
 
     // Are we in testing mode?
     testing: bool,
@@ -502,7 +503,7 @@ struct HeapGlobals {
 impl Globals {
     fn new(
         testing: bool,
-        file_name: PathBuf,
+        file_name: Option<PathBuf>,
         trim_backtraces: Option<usize>,
         eprint_json: bool,
         heap: Option<HeapGlobals>,
@@ -778,30 +779,32 @@ impl Globals {
             *memory_output = serde_json::to_string_pretty(&json).unwrap();
             eprintln!("dhat: The data has been saved to the memory buffer");
         } else {
-            let write = || -> std::io::Result<()> {
-                let buffered_file = BufWriter::new(File::create(&self.file_name)?);
-                // `to_writer` produces JSON that is compact.
-                // `to_writer_pretty` produces JSON that is readable. This code
-                // gives us JSON that is fairly compact and fairly readable.
-                // Ideally it would be more like what DHAT produces, e.g. one
-                // space indents, no spaces after `:` and `,`, and `fs` arrays
-                // on a single line, but this is as good as we can easily
-                // achieve.
-                let formatter = serde_json::ser::PrettyFormatter::with_indent(b"");
-                let mut ser = serde_json::Serializer::with_formatter(buffered_file, formatter);
-                json.serialize(&mut ser)?;
-                Ok(())
-            };
-            match write() {
-                Ok(()) => eprintln!(
-                    "dhat: The data has been saved to {}, and is viewable with dhat/dh_view.html",
-                    self.file_name.to_string_lossy()
-                ),
-                Err(e) => eprintln!(
-                    "dhat: error: Writing to {} failed: {}",
-                    self.file_name.to_string_lossy(),
-                    e
-                ),
+            if let Some(file_name) = self.file_name {
+                let write = || -> std::io::Result<()> {
+                    let buffered_file = BufWriter::new(File::create(&file_name)?);
+                    // `to_writer` produces JSON that is compact.
+                    // `to_writer_pretty` produces JSON that is readable. This code
+                    // gives us JSON that is fairly compact and fairly readable.
+                    // Ideally it would be more like what DHAT produces, e.g. one
+                    // space indents, no spaces after `:` and `,`, and `fs` arrays
+                    // on a single line, but this is as good as we can easily
+                    // achieve.
+                    let formatter = serde_json::ser::PrettyFormatter::with_indent(b"");
+                    let mut ser = serde_json::Serializer::with_formatter(buffered_file, formatter);
+                    json.serialize(&mut ser)?;
+                    Ok(())
+                };
+                match write() {
+                    Ok(()) => eprintln!(
+                        "dhat: The data has been saved to {}, and is viewable with dhat/dh_view.html",
+                        file_name.to_string_lossy()
+                    ),
+                    Err(e) => eprintln!(
+                        "dhat: error: Writing to {} failed: {}",
+                        file_name.to_string_lossy(),
+                        e
+                    ),
+                }
             }
         }
         if self.eprint_json {
@@ -1124,13 +1127,7 @@ impl ProfilerBuilder {
         let phase: &mut Phase<Globals> = &mut TRI_GLOBALS.lock();
         match phase {
             Phase::Ready => {
-                let file_name = if let Some(file_name) = self.file_name {
-                    file_name
-                } else if !self.ad_hoc {
-                    PathBuf::from("dhat-heap.json")
-                } else {
-                    PathBuf::from("dhat-ad-hoc.json")
-                };
+                let file_name = self.file_name.clone();
                 let h = if !self.ad_hoc {
                     Some(HeapGlobals::new())
                 } else {
