@@ -16,28 +16,28 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-    - name: Clone repository
-      uses: actions/checkout@v2
+      - name: Clone repository
+        uses: actions/checkout@v4
 
-    - name: Install clippy and rustfmt
-      run: |
-        rustup component add clippy
-        rustup component add rustfmt
+      - name: Install clippy and rustfmt
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
 
-    - name: Build (debug)
-      run: cargo build --verbose
+      - name: Build (debug)
+        run: cargo build --verbose
 
-    - name: Build (release)
-      run: cargo build --verbose --release
+      - name: Build (release)
+        run: cargo build --verbose --release
 
-    - name: Run tests (debug)
-      run: cargo test --verbose
+      - name: Run tests (debug)
+        run: cargo test --verbose
 
-    - name: Run tests (release)
-      run: cargo test --verbose --release
+      - name: Run tests (release)
+        run: cargo test --verbose --release
 
-    - name: Check formatting
-      run: cargo fmt -- --check
+      - name: Check formatting
+        run: cargo fmt -- --check
 
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
