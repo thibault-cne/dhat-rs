@@ -1,13 +1,13 @@
 [package]
 name = "dhat"
-version = "0.3.2"
-authors = ["Nicholas Nethercote <n.nethercote@gmail.com>"]
+version = "0.3.3"
+authors = ["Nicholas Nethercote <n.nethercote@gmail.com>", "Thibault Cheneviere <thibault.cheneviere@telecomnancy.net>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
 description = "A library for heap profiling and ad hoc profiling with DHAT."
 readme = "README.md"
-homepage = "https://github.com/nnethercote/dhat-rs"
-repository = "https://github.com/nnethercote/dhat-rs"
+homepage = "https://github.com/thibault-cne/dhat-rs"
+repository = "https://github.com/thibault-cne/dhat-rs"
 keywords = ["profiling"]
 categories = ["development-tools::profiling"]
 
